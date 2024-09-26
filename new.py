@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 
-# Load data
+# load data
 input_file = "glove.twitter.27B.100d.names.pickle"
 
 with open(input_file, 'rb') as f:
@@ -14,7 +14,7 @@ names = list(embedding.keys())
 points = np.array([embedding[x] for x in names])
 n, d = points.shape
 
-# Check the norm of data points and normalize
+# normalization
 norms = np.linalg.norm(points, axis=1)
 max_norm = np.max(norms)
 print(f"Maximum norm before normalization: {max_norm}")
@@ -25,69 +25,72 @@ if max_norm > 1:
     max_norm = np.max(norms)
     print(f"Maximum norm after normalization: {max_norm}")
 
-# Use PCA to reduce data to two dimensions
+# use PCA to reduce data to two dimensions
 pca = PCA(n_components=2)
 points_2d = pca.fit_transform(points)
 
-# Define the cost function
+# cost function
 def compute_cost(points, centers):
     distances_squared = np.sum((points - centers[:, np.newaxis])**2, axis=2)
     return np.mean(np.min(distances_squared, axis=0))
 
-# Non-private k-means algorithm
+# Non-private k-means algorithm from the teacher
 def k_means(points, k, t):
-    n = points.shape[0]
     initial_assignment = np.random.choice(range(k), n)
-    clusters = [np.where(initial_assignment == i)[0].tolist() for i in range(k)]
+    cluster_indexes = [ (initial_assignment == i) for i in range(k) ]
+    cluster_sizes = [ cluster_indexes[i].sum() for i in range(k) ]
 
     for l in range(t):
-        centers = []
-        for cluster_indices in clusters:
-            n_i = len(cluster_indices)
-            sum_x = np.sum(points[cluster_indices], axis=0)
-            c_i = sum_x / max(1, n_i)
-            centers.append(c_i)
-        centers = np.array(centers)
-        distances_squared = np.sum((points - centers[:, np.newaxis])**2, axis=2)
+        cluster_sums = [ np.sum(points[cluster_indexes[i]], axis=0) for i in range(k) ]
+        centers = np.array([ cluster_sums[i] / max(1, cluster_sizes[i]) for i in range(k) ])
+        distances_squared = np.sum((points - centers[:,np.newaxis])**2, axis=-1)
         assignment = np.argmin(distances_squared, axis=0)
-        clusters = [np.where(assignment == i)[0].tolist() for i in range(k)]
+        cluster_indexes = [ (assignment == i) for i in range(k) ]
+        cluster_sizes = [ cluster_indexes[i].sum() for i in range(k) ]
+
     return centers, assignment
 
-# Private m_means algorithm
+#
 def compute_sigma(rho, t):
     sigma_squared = (3 * t) / rho
     sigma = np.sqrt(sigma_squared)
     return sigma
-
+#private m_means algorithm
 def m_means(points, k, t, rho):
     n, d = points.shape
     sigma = compute_sigma(rho, t)
-    # Initialize clusters
+    # initialize clusters
     initial_assignment = np.random.choice(range(k), n)
-    clusters = [np.where(initial_assignment == i)[0].tolist() for i in range(k)]
+    cluster_indexes = [(initial_assignment == i) for i in range(k)]
+    cluster_sizes = [cluster_indexes[i].sum() for i in range(k)]
 
-    for _ in range(t):
-        # Update cluster centers and add noise
+    for l in range(t):
+        # calculate the sum of clusters and add noise
+        cluster_sums = [np.sum(points[cluster_indexes[i]], axis=0) for i in range(k)]
         centers = []
         n_counts = []
-        for cluster_indices in clusters:
-            n_i = len(cluster_indices)
-            sum_x = np.sum(points[cluster_indices], axis=0)
+        for i in range(k):
+            n_i = cluster_sizes[i]
+            sum_x = cluster_sums[i]
             z = np.random.normal(0, sigma, size=d)
             c_i = (sum_x + z) / max(1, n_i)
             centers.append(c_i)
-            # Update cluster size and add noise
+            # update cluster sizes and add noise
             z_prime = np.random.normal(0, sigma)
             n_i_noisy = n_i + z_prime
             n_counts.append(n_i_noisy)
         centers = np.array(centers)
-        # Assign data points to clusters
-        distances_squared = np.sum((points - centers[:, np.newaxis])**2, axis=2)
+        # assign data points to clusters
+        distances_squared = np.sum((points - centers[:, np.newaxis])**2, axis=-1)
         assignment = np.argmin(distances_squared, axis=0)
-        clusters = [np.where(assignment == i)[0].tolist() for i in range(k)]
+        cluster_indexes = [(assignment == i) for i in range(k)]
+        cluster_sizes = [cluster_indexes[i].sum() for i in range(k)]
+
     return centers, assignment
 
+
 # Parameter settings
+
 k = 5  # Number of clusters
 t = 5  # Number of iterations
 
